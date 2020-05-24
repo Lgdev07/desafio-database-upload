@@ -1,16 +1,16 @@
-// import AppError from '../errors/AppError';
+import { getRepository, getCustomRepository } from 'typeorm';
+import AppError from '../errors/AppError';
 
-import { getRepository } from 'typeorm';
 import Transaction from '../models/Transaction';
-import CreateCategoryService from './CreateCategoryService';
+import Category from '../models/Category';
+import TransactionsRepository from '../repositories/TransactionsRepository';
 
 interface Request {
   title: string;
   value: number;
-  type: 'income' | 'outcome';
+  type: string;
   category: string;
 }
-
 class CreateTransactionService {
   public async execute({
     title,
@@ -18,18 +18,54 @@ class CreateTransactionService {
     type,
     category,
   }: Request): Promise<Transaction> {
-    const transactionRepository = getRepository(Transaction);
+    if (type !== 'income' && type !== 'outcome') {
+      throw new AppError('Invalid type.');
+    }
 
-    const categoryService = new CreateCategoryService();
+    if (value <= 0) {
+      throw new AppError('Value must be grater than 0.');
+    }
 
-    const category_id = await categoryService.execute(category);
+    const categoryRepository = getRepository(Category);
+    const transactionRepository = getCustomRepository(TransactionsRepository);
+
+    if (type === 'outcome') {
+      const balance = await transactionRepository.getBalance();
+
+      if (balance.total - value < 0) {
+        throw new AppError('Not sufficient balance.');
+      }
+    }
 
     const transaction = transactionRepository.create({
       title,
-      type,
       value,
-      category_id: category_id.id,
+      type,
     });
+
+    const categoryExists = await categoryRepository.findOne({
+      where: { title: category },
+    });
+
+    if (categoryExists) {
+      transaction.category_id = categoryExists.id;
+      transaction.category = categoryExists;
+    } else {
+      const newCategory = categoryRepository.create({
+        title: category,
+      });
+
+      await categoryRepository.save(newCategory);
+
+      transaction.category_id = newCategory.id;
+      transaction.category = newCategory;
+    }
+
+    await transactionRepository.save(transaction);
+
+    delete transaction.category_id;
+    delete transaction.created_at;
+    delete transaction.updated_at;
 
     return transaction;
   }
