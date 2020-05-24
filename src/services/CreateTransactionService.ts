@@ -8,7 +8,7 @@ import TransactionsRepository from '../repositories/TransactionsRepository';
 interface Request {
   title: string;
   value: number;
-  type: string;
+  type: 'income' | 'outcome';
   category: string;
 }
 class CreateTransactionService {
@@ -18,54 +18,38 @@ class CreateTransactionService {
     type,
     category,
   }: Request): Promise<Transaction> {
-    if (type !== 'income' && type !== 'outcome') {
-      throw new AppError('Invalid type.');
-    }
-
     if (value <= 0) {
       throw new AppError('Value must be grater than 0.');
     }
 
     const categoryRepository = getRepository(Category);
     const transactionRepository = getCustomRepository(TransactionsRepository);
+    const { total } = await transactionRepository.getBalance();
 
-    if (type === 'outcome') {
-      const balance = await transactionRepository.getBalance();
+    if (type === 'outcome' && value > total) {
+      throw new AppError('Not sufficient balance.');
+    }
 
-      if (balance.total - value < 0) {
-        throw new AppError('Not sufficient balance.');
-      }
+    let category_id = await categoryRepository.findOne({
+      where: { title: category },
+    });
+
+    if (!category_id) {
+      category_id = categoryRepository.create({
+        title: category,
+      });
+
+      await categoryRepository.save(category_id);
     }
 
     const transaction = transactionRepository.create({
       title,
       value,
       type,
+      category: category_id,
     });
-
-    const categoryExists = await categoryRepository.findOne({
-      where: { title: category },
-    });
-
-    if (categoryExists) {
-      transaction.category_id = categoryExists.id;
-      transaction.category = categoryExists;
-    } else {
-      const newCategory = categoryRepository.create({
-        title: category,
-      });
-
-      await categoryRepository.save(newCategory);
-
-      transaction.category_id = newCategory.id;
-      transaction.category = newCategory;
-    }
 
     await transactionRepository.save(transaction);
-
-    delete transaction.category_id;
-    delete transaction.created_at;
-    delete transaction.updated_at;
 
     return transaction;
   }

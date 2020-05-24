@@ -1,9 +1,7 @@
-import path from 'path';
 import fs from 'fs';
 import csv from 'csvtojson';
 
 import Transaction from '../models/Transaction';
-import uploadConfig from '../config/upload';
 import CreateTransactionService from './CreateTransactionService';
 
 interface Request {
@@ -11,14 +9,12 @@ interface Request {
 }
 
 class ImportTransactionsService {
-  async execute({ filename }: Request): Promise<Transaction[]> {
+  async execute(filepath: string): Promise<Transaction[]> {
     const createTransactionService = new CreateTransactionService();
 
-    const filePath = path.join(uploadConfig.directory, filename);
+    const csvJson = await csv().fromFile(filepath);
 
-    const csvJson = await csv().fromFile(filePath);
-
-    await fs.promises.unlink(filePath);
+    await fs.promises.unlink(filepath);
 
     const transactions: Transaction[] = [];
 

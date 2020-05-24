@@ -1,37 +1,24 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { getCustomRepository } from 'typeorm';
-
-import uploadConfig from '../config/upload';
+import path from 'path';
 
 import TransactionsRepository from '../repositories/TransactionsRepository';
 import CreateTransactionService from '../services/CreateTransactionService';
 import DeleteTransactionService from '../services/DeleteTransactionService';
 import ImportTransactionsService from '../services/ImportTransactionsService';
 
-const upload = multer(uploadConfig);
+const tmpFolder = path.resolve(__dirname, '..', '..', 'tmp');
+const upload = multer({ dest: tmpFolder });
 
 const transactionsRouter = Router();
 
 transactionsRouter.get('/', async (request, response) => {
   const transactionsRepository = getCustomRepository(TransactionsRepository);
 
-  // const transactions = await transactionsRepository.find({
-  //   relations: ['category'],
-  // });
-
-  const transactions = await transactionsRepository
-    .createQueryBuilder('transaction')
-    .leftJoinAndSelect('transaction.category', 'category')
-    .select([
-      'transaction.id',
-      'transaction.title',
-      'transaction.value',
-      'transaction.type',
-      'category.id',
-      'category.title',
-    ])
-    .getMany();
+  const transactions = await transactionsRepository.find({
+    relations: ['category'],
+  });
 
   const balance = await transactionsRepository.getBalance();
 
@@ -70,11 +57,11 @@ transactionsRouter.post(
   '/import',
   upload.single('file'),
   async (request, response) => {
-    const { filename } = request.file;
+    const { path: pathfolder } = request.file;
 
     const importTransactions = new ImportTransactionsService();
 
-    const transactions = await importTransactions.execute({ filename });
+    const transactions = await importTransactions.execute(pathfolder);
 
     return response.json(transactions);
   },
